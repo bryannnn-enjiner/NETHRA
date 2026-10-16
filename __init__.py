@@ -1,12 +1,8 @@
 """
-EyeExaminer - Raspberry Pi TFT Display Application
-Version: 1.0.0
+Hardware module - GPIO and Camera management
 """
 
-__version__ = "1.0.0"
-__author__ = "EYEXAMINER Team"
+from .hardware_gpio import GPIOController
+from .hardware_camera import CameraManager
 
-# Package initialization
-from .app_eyexaminer import EyeExaminerApp, main
-
-__all__ = ["EyeExaminerApp", "main"]
+__all__ = ["GPIOController", "CameraManager"]
