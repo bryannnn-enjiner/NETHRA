@@ -1,4 +1,4 @@
-EYEXAMINER PROJECT STRUCTURE GUIDE
+NETHRA PROJECT STRUCTURE GUIDE
 ===================================
 
 ✅ STRUKTUR FINAL (Organized Packages)
