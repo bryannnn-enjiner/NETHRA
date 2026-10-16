@@ -1,0 +1,7 @@
+pygame 2.6.1 (SDL 2.28.4, Python 3.13.5)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+error: XDG_RUNTIME_DIR is invalid or not set in the environment.
+in.py", line 34, in <module>
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.FULLSCREEN | pygame.NOFRAME)
+pygame.error: fbcon not available
+zed

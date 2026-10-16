@@ -1,0 +1,264 @@
+# EYEXAMINER SETUP GUIDE
+
+## 📁 FILE STRUCTURE
+
+Setelah download semua file, organisasikan seperti ini:
+
+```
+/home/pi/EYEXAMINER/
+│
+├── main.py                    # Entry point (start dari sini)
+├── config.ini                 # Konfigurasi
+├── requirements.txt           # Python dependencies
+│
+├── config_settings.py         # Load config.ini
+├── app_eyexaminer.py          # Main app logic
+│
+├── hardware_gpio.py           # GPIO control (Button & LED)
+├── hardware_camera.py         # Camera capture
+│
+├── wifi_network.py            # WiFi status check
+│
+├── display_ui.py              # UI components
+├── display_screen_boot.py     # Boot/Splash screen
+├── display_screen_main.py     # Main capture screen
+├── display_screen_gallery.py  # Gallery screen
+│
+├── utils_logger.py            # Logging
+│
+├── captures/                  # Folder untuk captured images (auto created)
+├── logs/                      # Folder untuk logs (auto created)
+│
+└── venv/                       # Python virtual environment
+```
+
+---
+
+## ⚙️ SETUP INSTRUCTIONS
+
+### 1. Copy semua file ke Raspberry Pi
+
+```bash
+# Di local machine, copy ke Pi via SCP
+scp -r /path/to/eyexaminer/files pi@<IP_PI>:/home/pi/EYEXAMINER/
+
+# Atau jika sudah di Pi, organize folder sesuai struktur di atas
+```
+
+### 2. Create Python Virtual Environment
+
+```bash
+cd /home/pi/EYEXAMINER
+python3 -m venv venv
+source venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Test Run
+
+```bash
+# Test dari terminal
+DISPLAY=:0 XAUTHORITY=/home/pi/.Xauthority python3 main.py
+
+# Atau dengan fullscreen
+python3 main.py
+```
+
+### 5. Setup Autostart
+
+Buat file:
+```bash
+nano ~/.config/autostart/eyexaminer.desktop
+```
+
+Copy-paste:
+```ini
+[Desktop Entry]
+Type=Application
+Name=EyeExaminer
+Exec=bash -c 'sleep 2 && /home/pi/EYEXAMINER/venv/bin/python3 /home/pi/EYEXAMINER/main.py'
+StartupNotify=false
+Terminal=false
+NoDisplay=false
+```
+
+### 6. Reboot & Test
+
+```bash
+sudo reboot
+```
+
+---
+
+## 🔧 CONFIG.INI - CUSTOMIZE SESUAI HARDWARE ANDA
+
+### GPIO Pins (Sesuaikan dengan setup Anda)
+
+```ini
+[gpio]
+btn_capture = 6     # Button Kiri (physical pin 31 = BCM GPIO6)
+btn_menu = 26       # Button Kanan (physical pin 37 = BCM GPIO26)
+ir_led_pin1 = 23    # IR illumination, always on (from init to cleanup)
+ir_led_pin2 = 12    # IR illumination, always on (from init to cleanup)
+
+[rgb_flash]
+gpio_pin = 18       # WS2812B (WCMCU-2812B-12) DIN, PWM0
+led_count = 12
+brightness = 50     # 0-255. Kept low deliberately - this flashes into an eye
+                    # through a 90d lens. Raise gradually only after checking
+                    # actual irradiance at the eye with a light meter.
+duration = 0.1      # seconds, full-white pulse timed to the shutter
+
+[battery]
+i2c_bus = 1
+i2c_address = 0x43  # Waveshare UPS HAT (B) INA219
+```
+
+### RGB flash on Raspberry Pi 5 (rp1_ws281x_pwm kernel module)
+
+The Pi 5's RP1 chip broke the classic PWM/DMA register access the mainline
+`rpi_ws281x`/pip `rpi-ws281x` package uses, so driving the WS2812B ring on
+GPIO18 needs a small out-of-tree kernel module + device tree overlay from
+the `pi5` branch of https://github.com/jgarff/rpi_ws281x, PLUS Python
+bindings built from THAT same source (the generic PyPI wheel does not
+include RP1 support and silently fails with "Hardware revision is not
+supported").
+
+What's already set up on this Pi (persists across reboots):
+- Kernel module installed at
+  `/lib/modules/<kernel-version>/extra/rp1_ws281x_pwm.ko`, registered via
+  `depmod -a`, auto-loaded via `/etc/modules` (`rp1_ws281x_pwm` line).
+- Overlay installed at `/boot/firmware/overlays/rp1_ws281x_pwm.dtbo`,
+  loaded via `dtoverlay=rp1_ws281x_pwm` in `/boot/firmware/config.txt`.
+- `/etc/systemd/system/ws281x-pinctrl.service` runs
+  `pinctrl set 18 a3 pn` at every boot (sets GPIO18 to its PWM0 alt
+  function - the overlay alone doesn't do this).
+- `/etc/udev/rules.d/99-ws281x-pwm.rules` sets `/dev/ws281x_pwm` to
+  `group gpio, mode 0660` so the app can use it as the normal `pi` user
+  (no sudo/root needed) - default permissions are root-only.
+- The custom-built Python wheel is installed in `venv/` (shadows the
+  generic system-wide `rpi_ws281x` package). A copy is kept at
+  `vendor/rpi_ws281x-5.0.0-cp313-cp313-linux_aarch64.whl` plus the built
+  `.ko`/`.dtbo` for reference.
+
+**If the kernel is ever upgraded** (`apt full-upgrade` etc.), the `.ko` in
+`vendor/` will no longer load (kernel modules are built against one exact
+kernel version) and needs rebuilding:
+
+```bash
+git clone --branch pi5 https://github.com/jgarff/rpi_ws281x.git
+cd rpi_ws281x/rp1_ws281x_pwm
+make                              # needs matching linux-headers-$(uname -r)
+bash dts.sh                       # builds rp1_ws281x_pwm.dtbo
+cd ..
+bash scripts/build-wheel.sh dist  # builds the Python wheel
+
+sudo cp rp1_ws281x_pwm/rp1_ws281x_pwm.ko /lib/modules/$(uname -r)/extra/
+sudo depmod -a
+sudo cp rp1_ws281x_pwm/rp1_ws281x_pwm.dtbo /boot/firmware/overlays/
+# /etc/modules, config.txt dtoverlay= line, the systemd service, and the
+# udev rule (see above) only need to exist once and don't need re-doing.
+
+/home/pi/EYEXAMINER/venv/bin/pip install --force-reinstall --no-deps \
+    dist/rpi_ws281x-*.whl
+sudo reboot
+```
+
+### Display
+
+```ini
+[display]
+width = 480         # TFT width
+height = 320        # TFT height
+fbdev = /dev/fb0    # Framebuffer device
+```
+
+### Camera
+
+```ini
+[camera]
+camera_index = 0       # Camera number (0 = primary)
+resolution_width = 3280
+resolution_height = 2464
+format = jpg
+```
+
+---
+
+## 📱 ALUR APLIKASI
+
+```
+1. BOOT
+   └─ Load config & init GPIO
+   └─ Initialize display
+   └─ Show splash screen "EYEXAMINER"
+   └─ Check WiFi connection
+
+2. MAIN SCREEN (Camera Preview)
+   ├─ Show live camera preview
+   ├─ Show "online mode" / "offline mode" di corner
+   ├─ Button 1 (Capture) = Take photo
+   │  └─ Flash LED blink + capture
+   │  └─ Show "✅ IMAGE SAVED" message
+   │  └─ Back to main screen
+   └─ Button 2 (Gallery) = Go to gallery
+
+3. GALLERY SCREEN
+   ├─ Show captured images
+   ├─ Button 1 (Next) = Next image
+   ├─ Button 2 (Prev) = Previous image
+   └─ Both buttons = Back to main
+
+4. REPEAT
+   └─ Ready untuk capture berikutnya
+```
+
+---
+
+## 🛠️ TROUBLESHOOTING
+
+### Camera tidak muncul di preview
+- Check if libcamera installed: `libcamera-hello`
+- Check if camera enabled di raspi-config
+
+### GPIO buttons tidak respond
+- Check pin numbers di config.ini
+- Test dengan: `gpio readall`
+
+### WiFi status error
+- Check if nmcli installed: `sudo apt install network-manager`
+- Check connection: `nmcli dev wifi list`
+
+### Display blank/black
+- Check if X11 running: `ps aux | grep Xorg`
+- Check framebuffer: `ls -la /dev/fb0`
+
+---
+
+## 📝 NEXT STEPS
+
+1. Copy semua file ke Pi
+2. Setup venv dan install dependencies
+3. Test run dari SSH
+4. Customize config.ini sesuai hardware Anda
+5. Test buttons dan camera
+6. Setup autostart
+7. Reboot dan check if working!
+
+---
+
+## 💡 TIPS
+
+- Semua file punya prefix agar mudah organize (display_, hardware_, wifi_, utils_, etc)
+- Config centralized di config.ini (no hardcoding)
+- Modular design - mudah untuk add feature baru
+- Check logs di eyexaminer.log untuk debugging
+
+---
+
+Good luck! 🚀

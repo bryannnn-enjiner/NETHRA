@@ -1,0 +1,12 @@
+pygame==2.6.1
+gpiozero==2.0.1
+Pillow==11.0.0
+numpy
+ai-edge-litert
+smbus2
+# rpi_ws281x is NOT installed from PyPI here: the public wheel doesn't support
+# Pi 5's RP1 chip. It's built from vendor/rpi_ws281x-*.whl instead, compiled
+# from the jgarff/rpi_ws281x "pi5" branch with the rp1_ws281x_pwm kernel
+# module. See SETUP_GUIDE.txt for the full rebuild steps (needed again if the
+# kernel is ever upgraded, since the .ko is built against the exact running
+# kernel version).
