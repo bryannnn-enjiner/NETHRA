@@ -1,8 +1,15 @@
 """
-Hardware module - GPIO and Camera management
+Display module - UI and Screen management
 """
 
-from .hardware_gpio import GPIOController
-from .hardware_camera import CameraManager
+from .display_ui import UIHelper
+from .display_screen_boot import BootScreen
+from .display_screen_main import MainScreen
+from .display_screen_gallery import GalleryScreen
 
-__all__ = ["GPIOController", "CameraManager"]
+__all__ = [
+    "UIHelper",
+    "BootScreen",
+    "MainScreen",
+    "GalleryScreen",
+]
